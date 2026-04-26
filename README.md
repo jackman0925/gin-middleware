@@ -7,6 +7,7 @@ A collection of production-ready middleware for the Gin web framework.
 - **JWT Authentication** — Token generation, parsing, and Gin middleware with configurable secrets, expiration, and signing methods
 - **CORS** — Configurable cross-origin resource sharing middleware
 - **Response** — Standardized API response formatting helpers
+- **Log** — Leveled logging interface with pluggable backends
 
 ## Installation
 
@@ -15,6 +16,26 @@ go get github.com/jackman0925/gin-middleware
 ```
 
 ## Usage
+
+### Logging
+
+All middleware packages share a common logging interface. By default logging is disabled (discard).
+
+```go
+import "github.com/jackman0925/gin-middleware/log"
+
+// Enable stdlib-based logging at INFO level
+log.SetStdLogger(log.LevelInfo)
+
+// Or plug in your own logger by implementing the Logger interface
+type Logger interface {
+    Errorf(format string, v ...any)
+    Warnf(format string, v ...any)
+    Infof(format string, v ...any)
+    Debugf(format string, v ...any)
+}
+log.SetLogger(myLogger, log.LevelDebug)
+```
 
 ### JWT Authentication
 

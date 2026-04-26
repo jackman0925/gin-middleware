@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackman0925/gin-middleware/log"
 	"github.com/jackman0925/gin-middleware/response"
 )
 
@@ -143,12 +144,14 @@ func (j *JWT) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader(j.Config.TokenHeaderName)
 		if authHeader == "" {
+			log.Warnf("missing authorization header from %s %s", c.Request.Method, c.Request.URL.Path)
 			response.FailWithMessage(c, http.StatusUnauthorized, "authorization header is missing")
 			return
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != j.Config.TokenPrefix {
+			log.Warnf("invalid authorization header format from %s %s", c.Request.Method, c.Request.URL.Path)
 			response.FailWithMessage(c, http.StatusUnauthorized, fmt.Sprintf("authorization header format must be %s {token}", j.Config.TokenPrefix))
 			return
 		}
@@ -156,6 +159,7 @@ func (j *JWT) Middleware() gin.HandlerFunc {
 		tokenString := parts[1]
 		claims, err := j.ParseToken(tokenString)
 		if err != nil {
+			log.Warnf("invalid token from %s %s: %v", c.Request.Method, c.Request.URL.Path, err)
 			response.FailWithMessage(c, http.StatusUnauthorized, err.Error())
 			return
 		}
@@ -163,8 +167,6 @@ func (j *JWT) Middleware() gin.HandlerFunc {
 		// Set claims in context using private keys
 		c.Set(string(claimsKey), claims)
 		for k, v := range claims {
-			// For backward compatibility and ease of use, we still set string keys
-			// but internal helpers will prefer the typed key if possible.
 			c.Set(k, v)
 		}
 
@@ -185,7 +187,6 @@ func ClaimsFromContext(c *gin.Context) (jwt.MapClaims, bool) {
 func UsernameFromContext(c *gin.Context) (string, bool) {
 	username, exists := c.Get(string(usernameKey))
 	if !exists {
-		// Fallback to string key if private key not found
 		username, exists = c.Get("username")
 		if !exists {
 			return "", false
@@ -194,4 +195,3 @@ func UsernameFromContext(c *gin.Context) (string, bool) {
 	val, ok := username.(string)
 	return val, ok
 }
-

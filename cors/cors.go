@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackman0925/gin-middleware/log"
 	"github.com/jackman0925/gin-middleware/response"
 )
 
@@ -94,6 +95,7 @@ func NewWithConfig(config Config) gin.HandlerFunc {
 		}
 
 		if !allow {
+			log.Warnf("CORS origin blocked: %s for %s %s", origin, c.Request.Method, c.Request.URL.Path)
 			response.FailWithMessage(c, http.StatusForbidden, "CORS origin not allowed")
 			return
 		}

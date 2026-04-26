@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased] - 2026-04-26
+## [0.0.1] - 2026-04-26
 
 ### Added
 - **Log**: 新增 `log` 包 — 分级日志接口（Error/Warn/Info/Debug），支持标准库和自定义 Logger（slog、logrus 等），默认 discard 不输出

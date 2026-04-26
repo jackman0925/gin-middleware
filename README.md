@@ -19,22 +19,33 @@ go get github.com/jackman0925/gin-middleware
 
 ### Logging
 
-All middleware packages share a common logging interface. By default logging is disabled (discard).
+All middleware packages share a common logging interface.
+
+**By default, logging is disabled (discard)** — no output, zero overhead. If you don't need logs, just don't import the `log` package:
+
+```go
+// 什么都不需要做 — 日志默认关闭
+import (
+    "github.com/jackman0925/gin-middleware/jwt"
+    "github.com/jackman0925/gin-middleware/cors"
+)
+```
+
+If you want to see logs:
 
 ```go
 import "github.com/jackman0925/gin-middleware/log"
 
-// Enable stdlib-based logging at INFO level
+// 标准库日志
 log.SetStdLogger(log.LevelInfo)
 
-// Or plug in your own logger by implementing the Logger interface
-type Logger interface {
-    Errorf(format string, v ...any)
-    Warnf(format string, v ...any)
-    Infof(format string, v ...any)
-    Debugf(format string, v ...any)
-}
-log.SetLogger(myLogger, log.LevelDebug)
+// 接入 glog（github.com/jackman0925/glog）— 只需 4 行
+type glogAdapter struct{}
+func (glogAdapter) Errorf(f string, v ...any) { glog.Errorf(f, v...) }
+func (glogAdapter) Warnf(f string, v ...any)  { glog.Warnf(f, v...) }
+func (glogAdapter) Infof(f string, v ...any)  { glog.Infof(f, v...) }
+func (glogAdapter) Debugf(f string, v ...any) { glog.Debugf(f, v...) }
+log.SetLogger(glogAdapter{}, log.LevelDebug)
 ```
 
 ### JWT Authentication

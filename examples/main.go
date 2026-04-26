@@ -15,25 +15,28 @@ import (
 	ginj "github.com/jackman0925/gin-middleware/jwt"
 	ginlog "github.com/jackman0925/gin-middleware/log"
 	"github.com/jackman0925/gin-middleware/response"
+	// "github.com/jackman0925/glog" // 如需 glog adapter 则取消注释
 )
 
 func main() {
 	// ============================================================
-	// 1. log — 启用日志，支持两种模式
+	// 1. log — 日志配置（可选）
 	// ============================================================
+	//
+	// 默认行为: 不打印任何日志（discard），中间件内部的 Warn/Error 调用直接返回
+	// 如果不需要日志，什么都不用做，跳过即可。
+	//
+	// 如果想看到日志，取消下面其中一行的注释:
 
-	// 模式 A: 使用标准库日志（自带 [gin-middleware] 前缀）
-	ginlog.SetStdLogger(ginlog.LevelDebug)
-	ginlog.Infof("server starting at %s", time.Now().Format(time.RFC3339))
-
-	// 模式 B: 接入第三方 logger（以 slog 为例）
-	// 注释掉模式 A，取消注释此处即可切换
+	// ginlog.SetStdLogger(ginlog.LevelDebug) // 模式 A: 标准库日志
 	/*
-		slogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		}))
-		ginlog.SetLogger(&slogAdapter{l: slogger}, ginlog.LevelDebug)
+	// 模式 B: 接入第三方 logger（以 slog 为例）
+	slogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	ginlog.SetLogger(&slogAdapter{l: slogger}, ginlog.LevelDebug)
 	*/
+	// 模式 C: 接入 glog（github.com/jackman0925/glog）— 只需 4 行 adapter
+	// glog.Init("./glog.yaml", "./logs")
+	// ginlog.SetLogger(&glogAdapter{}, ginlog.LevelDebug)
 
 	// ============================================================
 	// 2. response — 统一 API 响应格式
@@ -153,7 +156,7 @@ func main() {
 			response.FailWithMessage(c, http.StatusTeapot, "I'm a teapot (demo error)")
 		})
 
-		// Logout — 演示 response.Success
+		// Logout — 演示 log 包的 Infof 用法
 		auth.POST("/logout", func(c *gin.Context) {
 			username, _ := ginj.UsernameFromContext(c)
 			ginlog.Infof("user %s logged out", username)
@@ -207,3 +210,13 @@ func (a *slogAdapter) Errorf(format string, v ...any) { a.l.ErrorContext(context
 func (a *slogAdapter) Warnf(format string, v ...any)  { a.l.WarnContext(context.Background(), fmt.Sprintf(format, v...)) }
 func (a *slogAdapter) Infof(format string, v ...any)  { a.l.InfoContext(context.Background(), fmt.Sprintf(format, v...)) }
 func (a *slogAdapter) Debugf(format string, v ...any) { a.l.DebugContext(context.Background(), fmt.Sprintf(format, v...)) }
+
+// ---------- glog adapter ----------
+// 如果用户已经在使用 glog，只需定义一个空结构体委托给 glog 包级函数即可。
+// 因为 glog 的包级函数签名与 Logger 接口完全一致，所以 adapter 不需要任何字段。
+//
+// type glogAdapter struct{}
+// func (glogAdapter) Errorf(format string, v ...any) { glog.Errorf(format, v...) }
+// func (glogAdapter) Warnf(format string, v ...any)  { glog.Warnf(format, v...) }
+// func (glogAdapter) Infof(format string, v ...any)  { glog.Infof(format, v...) }
+// func (glogAdapter) Debugf(format string, v ...any) { glog.Debugf(format, v...) }

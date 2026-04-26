@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackman0925/gin-middleware/response"
 )
 
 // Config holds the CORS configuration
@@ -59,40 +60,57 @@ func NewWithConfig(config Config) gin.HandlerFunc {
 		maxAge = 86400
 	}
 
+	// Pre-process origins for O(1) lookup
+	allowedOriginsMap := make(map[string]struct{}, len(config.AllowedOrigins))
+	hasWildcard := false
+	for _, o := range config.AllowedOrigins {
+		if o == "*" {
+			hasWildcard = true
+		}
+		allowedOriginsMap[o] = struct{}{}
+	}
+
+	allowedMethodsStr := strings.Join(methods, ", ")
+	allowedHeadersStr := strings.Join(headers, ", ")
+	maxAgeStr := strconv.Itoa(maxAge)
+
 	return func(c *gin.Context) {
 		origin := c.GetHeader("Origin")
-		allow := false
-		isWildcard := false
-		for _, o := range config.AllowedOrigins {
-			if o == "*" {
-				isWildcard = true
-				allow = true
-				break
-			}
-			if o == origin {
-				allow = true
-				break
-			}
-		}
-		if len(config.AllowedOrigins) == 0 {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-		} else if isWildcard {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		} else if allow {
-			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
-		} else {
-			c.AbortWithStatus(http.StatusForbidden)
+		if origin == "" {
+			c.Next()
 			return
 		}
 
-		c.Writer.Header().Set("Access-Control-Max-Age", strconv.Itoa(maxAge))
-		c.Writer.Header().Set("Access-Control-Allow-Methods", strings.Join(methods, ", "))
-		c.Writer.Header().Set("Access-Control-Allow-Headers", strings.Join(headers, ", "))
+		allow := false
+		if len(config.AllowedOrigins) == 0 {
+			allow = true
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+		} else if hasWildcard {
+			allow = true
+			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		} else if _, ok := allowedOriginsMap[origin]; ok {
+			allow = true
+			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+
+		if !allow {
+			response.FailWithMessage(c, http.StatusForbidden, "CORS origin not allowed")
+			return
+		}
+
+		// When Access-Control-Allow-Origin is dynamic, we must set Vary: Origin
+		if !hasWildcard {
+			c.Writer.Header().Add("Vary", "Origin")
+		}
+
+		c.Writer.Header().Set("Access-Control-Max-Age", maxAgeStr)
+		c.Writer.Header().Set("Access-Control-Allow-Methods", allowedMethodsStr)
+		c.Writer.Header().Set("Access-Control-Allow-Headers", allowedHeadersStr)
 		if config.AllowCredentials {
 			c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		}
 
-		if c.Request.Method == "OPTIONS" {
+		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}

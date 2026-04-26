@@ -3,6 +3,7 @@ package jwt
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -88,7 +89,7 @@ func TestValidate(t *testing.T) {
 func TestMiddleware(t *testing.T) {
 	j := New("test-secret-key-that-is-at-least-32-chars")
 
-	token, err := j.GenerateTokenWithUsername("admin", map[string]interface{}{
+	token, err := j.GenerateTokenWithUsername("admin", map[string]any{
 		"adminID": 1,
 	})
 	if err != nil {
@@ -100,10 +101,15 @@ func TestMiddleware(t *testing.T) {
 	r.Use(j.Middleware())
 	r.GET("/test", func(c *gin.Context) {
 		username, _ := UsernameFromContext(c)
-		c.JSON(200, gin.H{"username": username})
+		// Also verify we can get claims
+		claims, _ := ClaimsFromContext(c)
+		c.JSON(200, gin.H{
+			"username": username,
+			"adminID":  claims["adminID"],
+		})
 	})
 
-	// Valid token
+	// 1. Valid token
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Authorization", "Bearer "+token)
@@ -113,7 +119,7 @@ func TestMiddleware(t *testing.T) {
 		t.Fatalf("expected status 200, got %d", w.Code)
 	}
 
-	// Missing header
+	// 2. Missing header - should use unified response format
 	w = httptest.NewRecorder()
 	req, _ = http.NewRequest("GET", "/test", nil)
 	r.ServeHTTP(w, req)
@@ -121,8 +127,11 @@ func TestMiddleware(t *testing.T) {
 	if w.Code != 401 {
 		t.Fatalf("expected status 401, got %d", w.Code)
 	}
+	if !strings.Contains(w.Body.String(), "\"code\":401") || !strings.Contains(w.Body.String(), "\"message\"") {
+		t.Fatalf("response should match unified fail format, got: %s", w.Body.String())
+	}
 
-	// Invalid prefix
+	// 3. Invalid prefix
 	w = httptest.NewRecorder()
 	req, _ = http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Authorization", "Token "+token)

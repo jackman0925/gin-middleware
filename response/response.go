@@ -10,24 +10,29 @@ import (
 
 // APIResponse defines the standard JSON response structure
 type APIResponse struct {
-	Code    int         `json:"code"`
-	Message string      `json:"message"`
-	Data    interface{} `json:"data,omitempty"`
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+	Data    any    `json:"data,omitempty"`
+}
+
+// PaginationInfo defines the details of a paginated response
+type PaginationInfo struct {
+	PageNo     int `json:"pageNo"`
+	PageSize   int `json:"pageSize"`
+	TotalCount int `json:"totalCount"`
+	TotalPages int `json:"totalPages"`
 }
 
 // ResponsePagination defines a paginated response structure
 type ResponsePagination struct {
-	Code       int    `json:"code"`
-	Message    string `json:"message"`
-	Data       any    `json:"data,omitempty"`
-	PageNo     int    `json:"pageNo"`
-	PageSize   int    `json:"pageSize"`
-	TotalSize  int    `json:"totalSize"`
-	TotalPages int    `json:"totalPages"`
+	Code       int            `json:"code"`
+	Message    string         `json:"message"`
+	Data       any            `json:"data,omitempty"`
+	Pagination PaginationInfo `json:"pagination"`
 }
 
 // Success returns a 200 OK JSON response
-func Success(c *gin.Context, data interface{}) {
+func Success(c *gin.Context, data any) {
 	c.JSON(http.StatusOK, APIResponse{
 		Code:    0,
 		Message: "success",
@@ -36,16 +41,18 @@ func Success(c *gin.Context, data interface{}) {
 }
 
 // SuccessPagination returns a paginated 200 OK JSON response
-func SuccessPagination(c *gin.Context, data any, pageNo, pageSize, totalSize int) {
-	totalPages := calcTotalPages(totalSize, pageSize)
+func SuccessPagination(c *gin.Context, data any, pageNo, pageSize, totalCount int) {
+	totalPages := calcTotalPages(totalCount, pageSize)
 	c.JSON(http.StatusOK, ResponsePagination{
-		Code:       0,
-		Message:    "success",
-		PageNo:     pageNo,
-		PageSize:   pageSize,
-		TotalSize:  totalSize,
-		TotalPages: totalPages,
-		Data:       data,
+		Code:    0,
+		Message: "success",
+		Data:    data,
+		Pagination: PaginationInfo{
+			PageNo:     pageNo,
+			PageSize:   pageSize,
+			TotalCount: totalCount,
+			TotalPages: totalPages,
+		},
 	})
 }
 
@@ -66,12 +73,13 @@ func FailWithMessage(c *gin.Context, status int, message string) {
 }
 
 // calcTotalPages calculates total number of pages
-func calcTotalPages(totalSize, pageSize int) int {
+func calcTotalPages(totalCount, pageSize int) int {
 	if pageSize <= 0 {
 		return 0
 	}
-	if totalSize%pageSize == 0 {
-		return totalSize / pageSize
+	if totalCount%pageSize == 0 {
+		return totalCount / pageSize
 	}
-	return (totalSize / pageSize) + 1
+	return (totalCount / pageSize) + 1
 }
+

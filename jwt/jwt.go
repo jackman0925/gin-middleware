@@ -10,6 +10,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/jackman0925/gin-middleware/response"
+)
+
+type contextKey string
+
+const (
+	claimsKey   contextKey = "_jwt_claims"
+	usernameKey contextKey = "username"
 )
 
 // Config holds the JWT configuration
@@ -29,11 +37,11 @@ type Config struct {
 // DefaultConfig returns a Config with default values
 func DefaultConfig(secret string) Config {
 	return Config{
-		Secret:        secret,
+		Secret:          secret,
 		TokenHeaderName: "Authorization",
-		TokenPrefix:   "Bearer",
-		Expiration:    time.Hour * 72,
-		SigningMethod: jwt.SigningMethodHS256,
+		TokenPrefix:     "Bearer",
+		Expiration:      time.Hour * 72,
+		SigningMethod:   jwt.SigningMethodHS256,
 	}
 }
 
@@ -87,7 +95,7 @@ func (j *JWT) GenerateToken(claims jwt.MapClaims) (string, error) {
 }
 
 // GenerateTokenWithUsername creates a JWT token for a user with username and optional metadata
-func (j *JWT) GenerateTokenWithUsername(username string, metadata map[string]interface{}) (string, error) {
+func (j *JWT) GenerateTokenWithUsername(username string, metadata map[string]any) (string, error) {
 	claims := jwt.MapClaims{
 		"username": username,
 		"iat":      time.Now().Unix(),
@@ -107,7 +115,7 @@ func (j *JWT) ParseToken(tokenString string) (jwt.MapClaims, error) {
 		return nil, err
 	}
 
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 		}
@@ -135,35 +143,28 @@ func (j *JWT) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader(j.Config.TokenHeaderName)
 		if authHeader == "" {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code":    http.StatusUnauthorized,
-				"message": "authorization header is missing",
-			})
+			response.FailWithMessage(c, http.StatusUnauthorized, "authorization header is missing")
 			return
 		}
 
 		parts := strings.Split(authHeader, " ")
 		if len(parts) != 2 || parts[0] != j.Config.TokenPrefix {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code":    http.StatusUnauthorized,
-				"message": fmt.Sprintf("authorization header format must be %s {token}", j.Config.TokenPrefix),
-			})
+			response.FailWithMessage(c, http.StatusUnauthorized, fmt.Sprintf("authorization header format must be %s {token}", j.Config.TokenPrefix))
 			return
 		}
 
 		tokenString := parts[1]
 		claims, err := j.ParseToken(tokenString)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"code":    http.StatusUnauthorized,
-				"message": err.Error(),
-			})
+			response.FailWithMessage(c, http.StatusUnauthorized, err.Error())
 			return
 		}
 
-		// Set claims in context
-		c.Set("_jwt_claims", claims)
+		// Set claims in context using private keys
+		c.Set(string(claimsKey), claims)
 		for k, v := range claims {
+			// For backward compatibility and ease of use, we still set string keys
+			// but internal helpers will prefer the typed key if possible.
 			c.Set(k, v)
 		}
 
@@ -173,7 +174,7 @@ func (j *JWT) Middleware() gin.HandlerFunc {
 
 // ClaimsFromContext retrieves JWT claims from the Gin context
 func ClaimsFromContext(c *gin.Context) (jwt.MapClaims, bool) {
-	claims, exists := c.Get("_jwt_claims")
+	claims, exists := c.Get(string(claimsKey))
 	if !exists {
 		return nil, false
 	}
@@ -182,9 +183,15 @@ func ClaimsFromContext(c *gin.Context) (jwt.MapClaims, bool) {
 
 // UsernameFromContext retrieves the username from JWT claims in context
 func UsernameFromContext(c *gin.Context) (string, bool) {
-	username, exists := c.Get("username")
+	username, exists := c.Get(string(usernameKey))
 	if !exists {
-		return "", false
+		// Fallback to string key if private key not found
+		username, exists = c.Get("username")
+		if !exists {
+			return "", false
+		}
 	}
-	return username.(string), true
+	val, ok := username.(string)
+	return val, ok
 }
+

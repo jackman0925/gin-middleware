@@ -104,13 +104,13 @@ func TestSuccessPagination(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("failed to parse response: %v", err)
 	}
-	if resp.TotalPages != 3 {
-		t.Fatalf("expected 3 total pages, got %d", resp.TotalPages)
+	if resp.Pagination.TotalPages != 3 {
+		t.Fatalf("expected 3 total pages, got %d", resp.Pagination.TotalPages)
 	}
-	if resp.PageNo != 1 {
-		t.Fatalf("expected pageNo 1, got %d", resp.PageNo)
+	if resp.Pagination.PageNo != 1 {
+		t.Fatalf("expected pageNo 1, got %d", resp.Pagination.PageNo)
 	}
-	if resp.TotalSize != 25 {
-		t.Fatalf("expected totalSize 25, got %d", resp.TotalSize)
+	if resp.Pagination.TotalCount != 25 {
+		t.Fatalf("expected totalCount 25, got %d", resp.Pagination.TotalCount)
 	}
 }

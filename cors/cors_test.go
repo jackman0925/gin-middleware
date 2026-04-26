@@ -3,6 +3,7 @@ package cors
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -37,7 +38,7 @@ func TestCORSWithOrigins(t *testing.T) {
 		c.String(200, "ok")
 	})
 
-	// Allowed origin
+	// 1. Allowed origin
 	w := httptest.NewRecorder()
 	req, _ := http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Origin", "https://allowed.com")
@@ -46,8 +47,11 @@ func TestCORSWithOrigins(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("expected status 200, got %d", w.Code)
 	}
+	if w.Header().Get("Vary") != "Origin" {
+		t.Fatal("expected Vary: Origin header for dynamic origin")
+	}
 
-	// Disallowed origin
+	// 2. Disallowed origin - should use unified response format
 	w = httptest.NewRecorder()
 	req, _ = http.NewRequest("GET", "/test", nil)
 	req.Header.Set("Origin", "https://blocked.com")
@@ -55,6 +59,9 @@ func TestCORSWithOrigins(t *testing.T) {
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("expected status 403, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "\"code\":403") {
+		t.Fatalf("response should match unified fail format, got: %s", w.Body.String())
 	}
 }
 

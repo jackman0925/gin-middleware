@@ -5,7 +5,10 @@
 // By default, logging is disabled (discard logger).
 package log
 
-import stdlog "log"
+import (
+	stdlog "log"
+	"sync/atomic"
+)
 
 // Level represents the severity of a log message.
 type Level int
@@ -95,46 +98,98 @@ func (l *levelFilteredLogger) Debugf(format string, v ...any) {
 	}
 }
 
-var global Logger = discardLogger{}
+type loggerState struct {
+	logger     Logger
+	configured bool
+	enabled    bool
+}
+
+var global atomic.Pointer[loggerState]
+
+func init() {
+	global.Store(&loggerState{logger: discardLogger{}})
+}
+
+func currentLogger() Logger {
+	state := global.Load()
+	if state == nil || !state.configured || !state.enabled {
+		return discardLogger{}
+	}
+	return state.logger
+}
 
 // SetLogger sets the global logger used by all middleware.
 // Pass nil to disable logging (default).
 func SetLogger(logger Logger, level Level) {
 	if logger == nil {
-		global = discardLogger{}
+		global.Store(&loggerState{logger: discardLogger{}})
 		return
 	}
 	// Wrap the custom logger with level filtering
-	global = &levelFilteredLogger{Logger: logger, level: level}
+	global.Store(&loggerState{
+		logger:     &levelFilteredLogger{Logger: logger, level: level},
+		configured: true,
+		enabled:    true,
+	})
 }
 
 // SetStdLogger sets a default stdlib-based logger at the given level.
 // Pass LevelDebug for maximum verbosity, LevelError for minimum.
 func SetStdLogger(level Level) {
-	global = &leveledLogger{level: level}
+	global.Store(&loggerState{
+		logger:     &leveledLogger{level: level},
+		configured: true,
+		enabled:    true,
+	})
+}
+
+// SetEnabled enables or disables a configured logger. A logger is enabled by
+// default when SetLogger or SetStdLogger is called. Enabling logging before a
+// logger is configured has no effect.
+func SetEnabled(enabled bool) {
+	for {
+		state := global.Load()
+		if state == nil || !state.configured {
+			return
+		}
+		next := &loggerState{
+			logger:     state.logger,
+			configured: true,
+			enabled:    enabled,
+		}
+		if global.CompareAndSwap(state, next) {
+			return
+		}
+	}
+}
+
+// IsEnabled reports whether a logger is configured and enabled.
+func IsEnabled() bool {
+	state := global.Load()
+	return state != nil && state.configured && state.enabled
 }
 
 // GetLogger returns the current global logger.
 func GetLogger() Logger {
-	return global
+	return currentLogger()
 }
 
 // Errorf logs an error message.
 func Errorf(format string, v ...any) {
-	global.Errorf(format, v...)
+	currentLogger().Errorf(format, v...)
 }
 
 // Warnf logs a warning message.
 func Warnf(format string, v ...any) {
-	global.Warnf(format, v...)
+	currentLogger().Warnf(format, v...)
 }
 
 // Infof logs an info message.
 func Infof(format string, v ...any) {
-	global.Infof(format, v...)
+	currentLogger().Infof(format, v...)
 }
 
 // Debugf logs a debug message.
 func Debugf(format string, v ...any) {
-	global.Debugf(format, v...)
+	currentLogger().Debugf(format, v...)
 }

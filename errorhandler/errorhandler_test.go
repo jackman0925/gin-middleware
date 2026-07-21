@@ -34,10 +34,57 @@ func TestErrorHandler_CatchesError(t *testing.T) {
 	if resp.Code != http.StatusInternalServerError {
 		t.Fatalf("expected code 500, got %d", resp.Code)
 	}
-	if resp.Message != "something went wrong" {
-		t.Fatalf("expected message 'something went wrong', got %s", resp.Message)
+	if resp.Message != defaultErrorMessage {
+		t.Fatalf("expected private error to be hidden, got %s", resp.Message)
 	}
 }
+
+func TestErrorHandler_ExposesExplicitPublicError(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(ErrorHandler())
+	r.GET("/error", func(c *gin.Context) {
+		c.Error(errors.New("safe client message")).SetType(gin.ErrorTypePublic)
+	})
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/error", nil)
+	r.ServeHTTP(w, req)
+
+	var resp response.APIResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if resp.Message != "safe client message" {
+		t.Fatalf("expected public message, got %q", resp.Message)
+	}
+}
+
+func TestErrorHandler_CustomMapper(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(ErrorHandlerWithMapper(func(err *gin.Error) (int, string) {
+		if errors.Is(err.Err, errNotFound) {
+			return http.StatusNotFound, "resource not found"
+		}
+		return http.StatusInternalServerError, ""
+	}))
+	r.GET("/error", func(c *gin.Context) { c.Error(errNotFound) })
+
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest(http.MethodGet, "/error", nil)
+	r.ServeHTTP(w, req)
+
+	var resp response.APIResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatal(err)
+	}
+	if w.Code != http.StatusNotFound || resp.Message != "resource not found" {
+		t.Fatalf("unexpected mapped response: status=%d response=%+v", w.Code, resp)
+	}
+}
+
+var errNotFound = errors.New("not found")
 
 func TestErrorHandler_DoesNotOverrideWrittenResponse(t *testing.T) {
 	gin.SetMode(gin.TestMode)

@@ -37,11 +37,19 @@ func DefaultConfig() Config {
 
 // New creates a CORS middleware with the given allowed origins
 func New(origins []string) gin.HandlerFunc {
+	allowCredentials := true
+	for _, origin := range origins {
+		if origin == "*" {
+			// Browsers reject Allow-Origin "*" together with credentials.
+			allowCredentials = false
+			break
+		}
+	}
 	return NewWithConfig(Config{
 		AllowedOrigins:   origins,
 		AllowedMethods:   DefaultConfig().AllowedMethods,
 		AllowedHeaders:   DefaultConfig().AllowedHeaders,
-		AllowCredentials: true,
+		AllowCredentials: allowCredentials,
 		MaxAge:           86400,
 	})
 }
@@ -70,6 +78,24 @@ func NewWithConfig(config Config) gin.HandlerFunc {
 		}
 		allowedOriginsMap[o] = struct{}{}
 	}
+	allowedMethodsMap := make(map[string]struct{}, len(methods))
+	allowAnyMethod := false
+	for _, method := range methods {
+		method = strings.ToUpper(strings.TrimSpace(method))
+		if method == "*" {
+			allowAnyMethod = true
+		}
+		allowedMethodsMap[method] = struct{}{}
+	}
+	allowedHeadersMap := make(map[string]struct{}, len(headers))
+	allowAnyHeader := false
+	for _, header := range headers {
+		header = strings.ToLower(strings.TrimSpace(header))
+		if header == "*" {
+			allowAnyHeader = true
+		}
+		allowedHeadersMap[header] = struct{}{}
+	}
 
 	allowedMethodsStr := strings.Join(methods, ", ")
 	allowedHeadersStr := strings.Join(headers, ", ")
@@ -82,13 +108,24 @@ func NewWithConfig(config Config) gin.HandlerFunc {
 			return
 		}
 
+		// A wildcard cannot be sent with credentials, so credentialed wildcard
+		// configurations reflect the concrete origin and vary the response.
+		dynamicOrigin := !hasWildcard || config.AllowCredentials
+		if dynamicOrigin {
+			c.Writer.Header().Add("Vary", "Origin")
+		}
+
 		allow := false
 		if len(config.AllowedOrigins) == 0 {
 			allow = true
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
 		} else if hasWildcard {
 			allow = true
-			c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+			if config.AllowCredentials {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
+			} else {
+				c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+			}
 		} else if _, ok := allowedOriginsMap[origin]; ok {
 			allow = true
 			c.Writer.Header().Set("Access-Control-Allow-Origin", origin)
@@ -100,9 +137,29 @@ func NewWithConfig(config Config) gin.HandlerFunc {
 			return
 		}
 
-		// When Access-Control-Allow-Origin is dynamic, we must set Vary: Origin
-		if !hasWildcard {
-			c.Writer.Header().Add("Vary", "Origin")
+		if c.Request.Method == http.MethodOptions {
+			c.Writer.Header().Add("Vary", "Access-Control-Request-Method")
+			c.Writer.Header().Add("Vary", "Access-Control-Request-Headers")
+
+			requestedMethod := strings.ToUpper(strings.TrimSpace(c.GetHeader("Access-Control-Request-Method")))
+			if requestedMethod != "" && !allowAnyMethod {
+				if _, ok := allowedMethodsMap[requestedMethod]; !ok {
+					log.Warnf("CORS method blocked: %s for origin %s", requestedMethod, origin)
+					response.FailWithMessage(c, http.StatusForbidden, "CORS method not allowed")
+					return
+				}
+			}
+
+			if requestedHeaders := c.GetHeader("Access-Control-Request-Headers"); requestedHeaders != "" && !allowAnyHeader {
+				for _, requestedHeader := range strings.Split(requestedHeaders, ",") {
+					requestedHeader = strings.ToLower(strings.TrimSpace(requestedHeader))
+					if _, ok := allowedHeadersMap[requestedHeader]; !ok {
+						log.Warnf("CORS header blocked: %s for origin %s", requestedHeader, origin)
+						response.FailWithMessage(c, http.StatusForbidden, "CORS header not allowed")
+						return
+					}
+				}
+			}
 		}
 
 		c.Writer.Header().Set("Access-Control-Max-Age", maxAgeStr)

@@ -29,6 +29,9 @@ func main() {
 	// 如果想看到日志，取消下面其中一行的注释:
 
 	// ginlog.SetStdLogger(ginlog.LevelDebug) // 模式 A: 标准库日志
+	// 配置 logger 后默认开启；如需临时关闭/恢复，可调用：
+	// ginlog.SetEnabled(false)
+	// ginlog.SetEnabled(true)
 	/*
 	// 模式 B: 接入第三方 logger（以 slog 为例）
 	slogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))

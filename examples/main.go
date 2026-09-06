@@ -14,6 +14,7 @@ import (
 	"github.com/jackman0925/gin-middleware/cors"
 	ginj "github.com/jackman0925/gin-middleware/jwt"
 	ginlog "github.com/jackman0925/gin-middleware/log"
+	"github.com/jackman0925/gin-middleware/request"
 	"github.com/jackman0925/gin-middleware/response"
 	// "github.com/jackman0925/glog" // 如需 glog adapter 则取消注释
 )
@@ -84,8 +85,9 @@ func main() {
 		var req struct {
 			Username string `json:"username" binding:"required"`
 			Password string `json:"password" binding:"required"`
+			Client   string `json:"client" default:"web" binding:"required"`
 		}
-		if err := c.ShouldBindJSON(&req); err != nil {
+		if err := request.BindJSON(c, &req); err != nil {
 			response.Fail(c, http.StatusBadRequest, err)
 			return
 		}

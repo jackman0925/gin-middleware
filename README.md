@@ -8,6 +8,7 @@ A collection of production-ready middleware for the Gin web framework.
 
 - **JWT Authentication** — Token generation, parsing, and Gin middleware with configurable secrets, expiration, and signing methods
 - **CORS** — Configurable cross-origin resource sharing middleware
+- **Request** — JSON binding with defaults applied before Gin validation
 - **Response** — Standardized API response formatting helpers
 - **Log** — Leveled logging interface with pluggable backends
 
@@ -128,6 +129,40 @@ log.SetLogger(glogAdapter{}, log.LevelDebug)
 Calling `log.SetLogger(nil, level)` removes the configured logger and disables
 logging. `log.IsEnabled()` reports whether a logger is both configured and
 enabled. Runtime logger configuration and toggling are concurrency-safe.
+
+### JSON Request Binding and Defaults
+
+Use the `request` package when JSON fields need defaults before validation:
+
+```go
+import "github.com/jackman0925/gin-middleware/request"
+
+type CreateUserRequest struct {
+    Name    string `json:"name" binding:"required"`
+    Page    int    `json:"page" default:"1" binding:"required,min=1"`
+    Enabled bool   `json:"enabled" default:"true"`
+}
+
+func createUser(c *gin.Context) {
+    var req CreateUserRequest
+    if err := request.BindJSON(c, &req); err != nil {
+        response.Fail(c, http.StatusBadRequest, err)
+        return
+    }
+    // Missing page and enabled become 1 and true before validation.
+}
+```
+
+`BindJSON` decodes the body, applies `default:"..."` tags, then invokes Gin's
+validator. It therefore supports `default` together with `binding:"required"`.
+Explicit JSON values such as `false`, `0`, and `""` are preserved rather than
+overwritten. Supported scalar defaults are string, bool, integer, unsigned
+integer, float, `time.Duration` (for example `default:"5s"`), and RFC3339
+`time.Time`; slices, maps, arrays, and structs use a JSON literal in the tag.
+
+The request body is cached in Gin's `BodyBytesKey`, so it remains available to
+`ShouldBindBodyWithJSON`. `SetReqDefaults` is available for non-JSON values; it
+treats zero values as unset, so prefer `BindJSON` for JSON requests.
 
 ### JWT Authentication
 

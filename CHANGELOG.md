@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+
+## [0.0.5] - 2026-09-06
+
+### Added
+- **Request**: 新增 `request` 包，提供 `BindJSON` 与 `SetReqDefaults`，支持 JSON 默认值在 Gin 校验前填充，并保留客户端显式传入的零值
+
 ## [0.0.3] - 2026-07-21
 
 ### Upgrade notes

@@ -8,6 +8,7 @@
 
 - **JWT 认证**：支持 Token 生成、解析以及 Gin 认证中间件，可配置密钥、有效期和签名算法。
 - **CORS**：可配置的跨域资源共享中间件。
+- **Request**：在 Gin 校验前填充默认值的 JSON 请求绑定助手。
 - **Response**：统一的 API 响应格式助手。
 - **Log**：支持日志级别和自定义后端的日志接口。
 - **ErrorHandler**：统一捕获 Gin Context 错误，并安全地转换为 JSON 响应。
@@ -136,6 +137,35 @@ func (glogAdapter) Debugf(f string, v ...any) { glog.Debugf(f, v...) }
 
 log.SetLogger(glogAdapter{}, log.LevelDebug)
 ```
+
+### JSON 请求绑定与默认值
+
+当 JSON 请求字段需要在校验前设置默认值时，使用 `request` 包：
+
+```go
+import "github.com/jackman0925/gin-middleware/request"
+
+type CreateUserRequest struct {
+    Name    string `json:"name" binding:"required"`
+    Page    int    `json:"page" default:"1" binding:"required,min=1"`
+    Enabled bool   `json:"enabled" default:"true"`
+}
+
+func createUser(c *gin.Context) {
+    var req CreateUserRequest
+    if err := request.BindJSON(c, &req); err != nil {
+        response.Fail(c, http.StatusBadRequest, err)
+        return
+    }
+    // 未传 page 和 enabled 时，会在校验前分别填充为 1 和 true。
+}
+```
+
+`BindJSON` 的执行顺序是：JSON 解码 → 按 `default:"..."` 标签填充默认值 → 调用 Gin validator。因此 `default` 可以与 `binding:"required"` 同时使用。客户端明确传入的 `false`、`0` 和空字符串会被保留，不会被默认值覆盖。
+
+支持 string、bool、有符号/无符号整数、float、`time.Duration`（例如 `default:"5s"`）和 RFC3339 格式的 `time.Time`。slice、map、array 和 struct 的默认值需使用 JSON 字面量。
+
+请求体会被缓存到 Gin 的 `BodyBytesKey`，后续仍可使用 `ShouldBindBodyWithJSON` 读取。对于非 JSON 对象可调用 `SetReqDefaults`；该函数会把零值视作未设置，因此 JSON 请求优先使用 `BindJSON`。
 
 ### JWT 认证
 
